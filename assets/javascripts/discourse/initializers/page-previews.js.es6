@@ -236,35 +236,24 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-// Composer integration - DISCOURSE 3.5+ MODERN API
+// Composer integration - UNIVERSAL (works Discourse 3.1 - 3.5+)
 if (siteSettings.page_previews_show_in_composer) {
-  // Register composer action using modern API
-  api.registerComposerAction("insertPagePreview", {
-    icon: "eye",
-    displayNameKey: "page_previews.composer.button_title",
-    order: 10,
-  });
-
-  // Handle the action
-  api.handleComposerAction("insertPagePreview", (composerModel) => {
-    const textarea = composerModel?.model?.target?.querySelector("textarea");
-    if (!textarea) return;
-
-    const cursorPos = textarea.selectionStart;
-    const textBefore = textarea.value.substring(0, cursorPos);
-    
-    const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
-    const template = linkMatch 
-      ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
-      : "[Page preview](/pages/page-id){.page-preview}";
-
-    const start = textarea.selectionStart;
-    textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
-    textarea.selectionStart = textarea.selectionEnd = start + template.length;
-    textarea.focus();
-  });
-}
-
+  // Method 1: Try modern toolbar API first
+  if (typeof api.onToolbarCreate === "function") {
+    api.onToolbarCreate((toolbar) => {
+      if (toolbar && typeof toolbar.addButton === "function") {
+        toolbar.addButton({
+          id: "page-preview-link",
+          group: "insert",
+          icon: "eye",
+          title: "page_previews.composer.button_title",
+          perform: (toolbarEvent) => {
+            insertPreviewLink(toolbarEvent.selected);
+          }
+        });
+      }
+    });
+  }
 
   api.onPageChange(() => {
     hidePreview();
