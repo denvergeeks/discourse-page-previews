@@ -7,34 +7,40 @@ let activePreview = null;
 let longPressTimer = null;
 let longPressTarget = null;
 
-// ✅ FIXED: Proper Markdown attribute syntax
+// ✅ FIXED: Correct URL + Pandoc syntax
 function insertPreviewLink(textarea) {
   if (!textarea) return;
 
   const cursorPos = textarea.selectionStart;
   const textBefore = textarea.value.substring(0, cursorPos);
   
+  // ✅ FIXED REGEX: Match [text][url] Pandoc format
   const linkMatch = textBefore.match(/\[([^\]]*)\]\[([^\]]*)\]/);
   
+  let linkText = linkMatch ? linkMatch[1] : 'Page preview';
   let url = linkMatch ? linkMatch[2] : '/pages/page-id';
-  let pageId = 'page-id';
   
-  // Extract numeric ID from URL
+  // ✅ ENSURE leading slash
+  if (url && !url.startsWith('/')) {
+    url = '/' + url;
+  }
+  
+  // Extract numeric ID
+  let pageId = 'page-id';
   const idMatch = url.match(/\/(\d+)(?:\/\d+)?$/);
   if (idMatch) {
     pageId = idMatch[1];
   }
   
-  // ✅ PANDOC ATTRIBUTES SYNTAX - renders as CSS class
-  const template = linkMatch 
-    ? `[${linkMatch[1]}][${url}]{.page-preview data-page-id="${pageId}"}`
-    : `[Page preview][${url}]{.page-preview}`;
-
+  // ✅ PROPER PANDOC SYNTAX: [text][url]{.class}
+  const template = `[${linkText}][${url}]{.page-preview}`;
+  
   const start = textarea.selectionStart;
   textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
   textarea.selectionStart = textarea.selectionEnd = start + template.length;
   textarea.focus();
 }
+
 
 function initializePagePreviews(api) {
   const siteSettings = api.container.lookup("site-settings:main");
