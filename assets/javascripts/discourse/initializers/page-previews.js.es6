@@ -251,47 +251,54 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-  // Composer integration - Fixed for Glimmer components
-  if (siteSettings.page_previews_show_in_composer) {
-    api.addComposerToolbarPopupMenuOption({
-      icon: "eye",
-      label: "page_previews.composer.button_title",
-      action: (toolbarEvent) => {
-        const textarea = toolbarEvent.selected;
-        const cursorPos = textarea.selectionStart;
-        const textBefore = textarea.value.substring(0, cursorPos);
-        const textAfter = textarea.value.substring(cursorPos);
+// Composer integration - FIXED VERSION
+if (siteSettings.page_previews_show_in_composer) {
+  api.addComposerToolbarPopupMenuOption({
+    icon: "eye",
+    label: "page_previews.composer.button_title",
+    action: (toolbarEvent) => {
+      const textarea = toolbarEvent.selected;
+      
+      if (!textarea || typeof textarea.selectionStart !== "number") {
+        return;
+      }
+      
+      const cursorPos = textarea.selectionStart;
+      const textBefore = textarea.value.substring(0, cursorPos);
+      const textAfter = textarea.value.substring(cursorPos);
+      
+      // Check if we're inside a link
+      const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
+      
+      let template, newCursorPos;
+      
+      if (linkMatch) {
+        // Add preview attribute to existing link
+        const linkText = linkMatch[1];
+        const linkUrl = linkMatch[2];
+        const replacement = `[${linkText}](${linkUrl}){.page-preview}`;
+        const beforeLink = textBefore.substring(0, linkMatch.index);
         
-        // Check if we're inside a link
-        const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)/);
-        
-        if (linkMatch) {
-          // Add preview attribute to existing link
-          const linkText = linkMatch[1];
-          const linkUrl = linkMatch[2];
-          const replacement = `[${linkText}](${linkUrl}){.page-preview}`;
-          
-          const beforeLink = textBefore.substring(0, linkMatch.index);
-          const newValue = beforeLink + replacement + textAfter;
-          const newCursorPos = beforeLink.length + replacement.length;
-          
-          toolbarEvent.addText(newValue);
+        template = beforeLink + replacement + textAfter;
+        newCursorPos = beforeLink.length + replacement.length;
+      } else {
+        // Insert new link template
+        template = "[Link text](/pages/page-id){.page-preview}";
+        newCursorPos = cursorPos + template.length;
+      }
+      
+      // Add text and set cursor position after DOM update
+      toolbarEvent.addText(template);
+      
+      later(() => {
+        if (textarea && textarea.focus) {
+          textarea.focus();
           textarea.selectionStart = textarea.selectionEnd = newCursorPos;
-        } else {
-          // Insert new link template
-          const template = "[Link text](/pages/page-id){.page-preview}";
-          toolbarEvent.addText(template);
-          
-          // Select "Link text"
-          later(() => {
-            textarea.selectionStart = cursorPos + 1;
-            textarea.selectionEnd = cursorPos + 10;
-            textarea.focus();
-          }, 10);
         }
-      },
-    });
-  }
+      }, 50);
+    },
+  });
+}
 
   // Cleanup on route change
   api.onPageChange(() => {
