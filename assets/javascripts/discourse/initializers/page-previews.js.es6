@@ -236,29 +236,59 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-  // Method 2: Fallback - Direct DOM injection (guaranteed to work)
-  api.onPageChange("composer", () => {
-    const composerToolbar = document.querySelector(".d-editor-button-bar .toolbar-group-insert");
-    if (!composerToolbar || composerToolbar.querySelector(".page-preview-btn")) {
-      return;
-    }
+// Composer integration - ERROR-FREE VERSION
+if (siteSettings.page_previews_show_in_composer) {
+  // Use MutationObserver for bulletproof composer detection
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'childList') {
+        const composerToolbar = document.querySelector('.d-editor-button-bar');
+        if (!composerToolbar || composerToolbar.querySelector('.page-preview-btn-safe')) {
+          return;
+        }
 
-    const button = document.createElement("button");
-    button.className = "widget-button page-preview-btn";
-    button.title = "Insert Page Preview";  // ✅ Fixed
-    button.innerHTML = '<i class="fa fa-eye"></i>';
-    
-    button.addEventListener("click", (e) => {
-      e.preventDefault();
-      const textarea = document.querySelector("#reply-control .d-editor-input");
-      if (textarea) {
-        insertPreviewLink(textarea);
+        // Insert button safely
+        const insertGroup = composerToolbar.querySelector('.toolbar-group-insert') || 
+                           composerToolbar.querySelector('.d-editor-toolbar-group-insert') ||
+                           composerToolbar.lastElementChild;
+        
+        if (insertGroup) {
+          const button = document.createElement('button');
+          button.className = 'widget-button page-preview-btn-safe';
+          button.title = 'Insert Page Preview';
+          button.style.marginLeft = '4px';
+          button.innerHTML = '<i class="fa fa-eye" style="font-size: 14px;"></i>';
+          
+          button.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const textarea = document.querySelector('#reply-control .d-editor-input, .d-editor textarea');
+            if (textarea) {
+              insertPreviewLink(textarea);
+            }
+          });
+          
+          insertGroup.appendChild(button);
+        }
       }
     });
+  });
 
-    composerToolbar.appendChild(button);
+  // Start observing when plugin loads
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // Cleanup on page change
+  api.onPageChange(() => {
+    const existingBtn = document.querySelector('.page-preview-btn-safe');
+    if (existingBtn) {
+      existingBtn.remove();
+    }
   });
 }
+
 
 // ✅ Shared insert function - MOVED OUTSIDE initializePagePreviews
 function insertPreviewLink(textarea) {
