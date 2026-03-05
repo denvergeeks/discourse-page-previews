@@ -236,28 +236,47 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-// Composer integration - UNIVERSAL (works Discourse 3.1 - 3.5+)
-if (siteSettings.page_previews_show_in_composer) {
-  // Method 1: Try modern toolbar API first
-  if (typeof api.onToolbarCreate === "function") {
-    api.onToolbarCreate((toolbar) => {
-      if (toolbar && typeof toolbar.addButton === "function") {
-        toolbar.addButton({
-          id: "page-preview-link",
-          group: "insert",
-          icon: "eye",
-          title: "page_previews.composer.button_title",
-          perform: (toolbarEvent) => {
-            insertPreviewLink(toolbarEvent.selected);
-          }
-        });
+  // Method 2: Fallback - Direct DOM injection (guaranteed to work)
+  api.onPageChange("composer", () => {
+    const composerToolbar = document.querySelector(".d-editor-button-bar .toolbar-group-insert");
+    if (!composerToolbar || composerToolbar.querySelector(".page-preview-btn")) {
+      return;
+    }
+
+    const button = document.createElement("button");
+    button.className = "widget-button page-preview-btn";
+    button.title = "Insert Page Preview";  // ✅ Fixed
+    button.innerHTML = '<i class="fa fa-eye"></i>';
+    
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      const textarea = document.querySelector("#reply-control .d-editor-input");
+      if (textarea) {
+        insertPreviewLink(textarea);
       }
     });
-  }
 
-  api.onPageChange(() => {
-    hidePreview();
+    composerToolbar.appendChild(button);
   });
+}
+
+// ✅ Shared insert function - MOVED OUTSIDE initializePagePreviews
+function insertPreviewLink(textarea) {
+  if (!textarea) return;
+
+  const cursorPos = textarea.selectionStart;
+  const textBefore = textarea.value.substring(0, cursorPos);
+  
+  // ✅ FIXED REGEX - no extra backslashes needed
+  const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
+  const template = linkMatch 
+    ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
+    : "[Page preview](/pages/page-id){.page-preview}";
+
+  const start = textarea.selectionStart;
+  textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
+  textarea.selectionStart = textarea.selectionEnd = start + template.length;
+  textarea.focus();
 }
 
 export default {
