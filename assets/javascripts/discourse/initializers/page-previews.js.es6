@@ -7,18 +7,28 @@ let activePreview = null;
 let longPressTimer = null;
 let longPressTarget = null;
 
-// ✅ GLOBAL FUNCTION 1: Insert preview link
+// ✅ FIXED: Proper Markdown attribute syntax
 function insertPreviewLink(textarea) {
   if (!textarea) return;
 
   const cursorPos = textarea.selectionStart;
   const textBefore = textarea.value.substring(0, cursorPos);
   
-  // ✅ FIXED REGEX
-  const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
+  const linkMatch = textBefore.match(/\[([^\]]*)\]\[([^\]]*)\]/);
+  
+  let url = linkMatch ? linkMatch[2] : '/pages/page-id';
+  let pageId = 'page-id';
+  
+  // Extract numeric ID from URL
+  const idMatch = url.match(/\/(\d+)(?:\/\d+)?$/);
+  if (idMatch) {
+    pageId = idMatch[1];
+  }
+  
+  // ✅ PANDOC ATTRIBUTES SYNTAX - renders as CSS class
   const template = linkMatch 
-    ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
-    : "[Page preview](/pages/page-id){.page-preview}";
+    ? `[${linkMatch[1]}][${url}]{.page-preview data-page-id="${pageId}"}`
+    : `[Page preview][${url}]{.page-preview}`;
 
   const start = textarea.selectionStart;
   textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
@@ -41,6 +51,11 @@ function initializePagePreviews(api) {
   function extractPageId(element) {
     const link = element.closest("a[href*='/pages/'], a[href*='/t/'], a.page-link, a.post-link");
     if (!link) return null;
+
+    // ✅ Check data-page-id attribute from Markdown attributes
+    if (link.dataset.pageId) {
+      return parseInt(link.dataset.pageId, 10);
+    }
 
     const href = link.getAttribute("href");
     
@@ -254,7 +269,7 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-  // ✅ COMPOSER INTEGRATION - BULLETPROOF
+  // ✅ BULLETPROOF COMPOSER BUTTON
   if (siteSettings.page_previews_show_in_composer) {
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
