@@ -236,34 +236,42 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-  // Composer integration
-  if (siteSettings.page_previews_show_in_composer) {
-    api.onToolbarCreate((toolbar) => {
-      toolbar.addButton({
-        id: "insert-page-preview",
-        group: "insert",
-        icon: "eye",
-        title: "page_previews.composer.button_title",
-        perform: function (e) {
-          const textarea = e?.selected || e?.textarea;
-          if (!textarea) return;
-          
-          const cursorPos = textarea.selectionStart;
-          const textBefore = textarea.value.substring(0, cursorPos);
-          
-          const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
-          const template = linkMatch 
-            ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
-            : "[Page preview](/pages/page-id){.page-preview}";
-          
-          const start = textarea.selectionStart;
-          textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
-          textarea.selectionStart = textarea.selectionEnd = start + template.length;
-          textarea.focus();
+// Composer integration - CORRECTED API
+if (siteSettings.page_previews_show_in_composer) {
+  api.decorateWidget("composer-actions:after", helper => {
+    const currentUser = api.getCurrentUser();
+    if (!currentUser) return;
+
+    return helper.attach("button", {
+      icon: "eye",
+      title: "page_previews.composer.button_title",
+      action: () => {
+        const composerModel = api.container.lookup("controller:composer");
+        if (!composerModel || !composerModel.toolbarEventComponent) {
+          return;
         }
-      });
+
+        const toolbarEvent = composerModel.toolbarEventComponent;
+        const textarea = toolbarEvent.selected;
+
+        if (!textarea) return;
+
+        const cursorPos = textarea.selectionStart;
+        const textBefore = textarea.value.substring(0, cursorPos);
+        
+        const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
+        const template = linkMatch 
+          ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
+          : "[Page preview](/pages/page-id){.page-preview}";
+
+        const start = textarea.selectionStart;
+        textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
+        textarea.selectionStart = textarea.selectionEnd = start + template.length;
+        textarea.focus();
+      }
     });
-  }
+  });
+}
 
   api.onPageChange(() => {
     hidePreview();
