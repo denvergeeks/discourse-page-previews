@@ -1,21 +1,20 @@
 import { withPluginApi } from "discourse/lib/plugin-api";
 import { ajax } from "discourse/lib/ajax";
 import { later, cancel } from "@ember/runloop";
-import { getOwner } from "discourse-common/lib/get-owner";
 
 let previewTimeout = null;
 let activePreview = null;
 let longPressTimer = null;
 let longPressTarget = null;
 
-// ✅ Shared insert function - MOVED OUTSIDE initializePagePreviews
+// ✅ GLOBAL FUNCTION 1: Insert preview link
 function insertPreviewLink(textarea) {
   if (!textarea) return;
 
   const cursorPos = textarea.selectionStart;
   const textBefore = textarea.value.substring(0, cursorPos);
   
-  // ✅ FIXED REGEX - no extra backslashes needed
+  // ✅ FIXED REGEX
   const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
   const template = linkMatch 
     ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
@@ -200,7 +199,7 @@ function initializePagePreviews(api) {
     }
   }
 
-  // Desktop hover (runs on all devices, mobile handles separately)
+  // Desktop hover
   document.addEventListener("mouseover", (e) => {
     if (requireCtrl && !e.ctrlKey) {
       return;
@@ -226,7 +225,7 @@ function initializePagePreviews(api) {
 
   document.addEventListener("scroll", hidePreview, { passive: true });
 
-  // Mobile long-press (detect via touch events)
+  // Mobile long-press
   if (mobileEnabled) {
     document.addEventListener("touchstart", (e) => {
       const pageId = extractPageId(e.target);
@@ -255,60 +254,59 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-// Composer integration - ERROR-FREE VERSION
-if (siteSettings.page_previews_show_in_composer) {
-  // Use MutationObserver for bulletproof composer detection
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'childList') {
-        const composerToolbar = document.querySelector('.d-editor-button-bar');
-        if (!composerToolbar || composerToolbar.querySelector('.page-preview-btn-safe')) {
-          return;
-        }
+  // ✅ COMPOSER INTEGRATION - BULLETPROOF
+  if (siteSettings.page_previews_show_in_composer) {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          const composerToolbar = document.querySelector('.d-editor-button-bar');
+          if (!composerToolbar || composerToolbar.querySelector('.page-preview-btn-safe')) {
+            return;
+          }
 
-        // Insert button safely
-        const insertGroup = composerToolbar.querySelector('.toolbar-group-insert') || 
-                           composerToolbar.querySelector('.d-editor-toolbar-group-insert') ||
-                           composerToolbar.lastElementChild;
-        
-        if (insertGroup) {
-          const button = document.createElement('button');
-          button.className = 'widget-button page-preview-btn-safe';
-          button.title = 'Insert Page Preview';
-          button.style.marginLeft = '4px';
-          button.innerHTML = '<i class="fa fa-eye" style="font-size: 14px;"></i>';
+          const insertGroup = composerToolbar.querySelector('.toolbar-group-insert') || 
+                             composerToolbar.querySelector('.d-editor-toolbar-group-insert') ||
+                             composerToolbar.lastElementChild;
           
-          button.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const textarea = document.querySelector('#reply-control .d-editor-input, .d-editor textarea');
-            if (textarea) {
-              insertPreviewLink(textarea);
-            }
-          });
-          
-          insertGroup.appendChild(button);
+          if (insertGroup) {
+            const button = document.createElement('button');
+            button.className = 'widget-button page-preview-btn-safe';
+            button.title = 'Insert Page Preview';
+            button.style.marginLeft = '4px';
+            button.innerHTML = '<i class="fa fa-eye" style="font-size: 14px;"></i>';
+            
+            button.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const textarea = document.querySelector('#reply-control .d-editor-input, .d-editor textarea');
+              if (textarea) {
+                insertPreviewLink(textarea);
+              }
+            });
+            
+            insertGroup.appendChild(button);
+          }
         }
+      });
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    api.onPageChange(() => {
+      const existingBtn = document.querySelector('.page-preview-btn-safe');
+      if (existingBtn) {
+        existingBtn.remove();
       }
     });
-  });
+  }
 
-  // Start observing when plugin loads
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-
-  // Cleanup on page change
   api.onPageChange(() => {
-    const existingBtn = document.querySelector('.page-preview-btn-safe');
-    if (existingBtn) {
-      existingBtn.remove();
-    }
+    hidePreview();
   });
 }
-
-
 
 export default {
   name: "page-previews",
