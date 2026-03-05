@@ -289,7 +289,6 @@ if (siteSettings.page_previews_show_in_composer) {
   });
 }
 
-
 // ✅ Shared insert function - MOVED OUTSIDE initializePagePreviews
 function insertPreviewLink(textarea) {
   if (!textarea) return;
