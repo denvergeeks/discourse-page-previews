@@ -1,4 +1,43 @@
-TODO_plugin_name:
-  plugin_name_enabled:
-    default: false
+plugins:
+  page_previews_enabled:
+    default: true
     client: true
+  page_previews_show_in_composer:
+    default: true
+    client: true
+  page_previews_mobile_enabled:
+    default: true
+    client: true
+  page_previews_mobile_long_press_duration:
+    default: 500
+    client: true
+    min: 200
+    max: 2000
+  page_previews_hover_delay:
+    default: 300
+    client: true
+    min: 0
+    max: 2000
+  page_previews_preview_length:
+    default: 250
+    min: 50
+    max: 1000
+  page_previews_require_ctrl_key:
+    default: true
+    client: true
+  page_previews_show_images:
+    default: true
+    client: true
+  page_previews_show_metadata:
+    default: true
+    client: true
+  page_previews_max_image_height:
+    default: 200
+    client: true
+    min: 100
+    max: 500
+  page_previews_preview_width:
+    default: 400
+    client: true
+    min: 250
+    max: 600
