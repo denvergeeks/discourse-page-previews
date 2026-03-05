@@ -1,7 +1,6 @@
 import { withPluginApi } from "discourse/lib/plugin-api";
 import { ajax } from "discourse/lib/ajax";
 import { later, cancel } from "@ember/runloop";
-import { getOwner } from "discourse-common/lib/get-owner";
 
 let previewTimeout = null;
 let activePreview = null;
@@ -126,6 +125,7 @@ function initializePagePreviews(api) {
   }
 
   function escapeHtml(text) {
+    if (!text) return "";
     const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
@@ -251,51 +251,45 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-  // Composer integration
+  // Composer integration - Fixed for Glimmer components
   if (siteSettings.page_previews_show_in_composer) {
-    api.modifyClass("component:d-editor", {
-      pluginId: "discourse-page-previews",
-
-      actions: {
-        togglePagePreview() {
-          const editor = this.element.querySelector("textarea");
-          const cursorPos = editor.selectionStart;
-          const textBefore = editor.value.substring(0, cursorPos);
-          const textAfter = editor.value.substring(cursorPos);
+    api.addComposerToolbarPopupMenuOption({
+      icon: "eye",
+      label: "page_previews.composer.button_title",
+      action: (toolbarEvent) => {
+        const textarea = toolbarEvent.selected;
+        const cursorPos = textarea.selectionStart;
+        const textBefore = textarea.value.substring(0, cursorPos);
+        const textAfter = textarea.value.substring(cursorPos);
+        
+        // Check if we're inside a link
+        const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)/);
+        
+        if (linkMatch) {
+          // Add preview attribute to existing link
+          const linkText = linkMatch[1];
+          const linkUrl = linkMatch[2];
+          const replacement = `[${linkText}](${linkUrl}){.page-preview}`;
           
-          // Check if we're inside a link
-          const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)/);
+          const beforeLink = textBefore.substring(0, linkMatch.index);
+          const newValue = beforeLink + replacement + textAfter;
+          const newCursorPos = beforeLink.length + replacement.length;
           
-          if (linkMatch) {
-            // Add preview attribute to existing link
-            const linkText = linkMatch[1];
-            const linkUrl = linkMatch[2];
-            const replacement = `[${linkText}](${linkUrl}){.page-preview}`;
-            
-            const beforeLink = textBefore.substring(0, linkMatch.index);
-            editor.value = beforeLink + replacement + textAfter;
-            editor.selectionStart = editor.selectionEnd = beforeLink.length + replacement.length;
-          } else {
-            // Insert new link template
-            const template = "[Link text](/pages/page-id){.page-preview}";
-            editor.value = textBefore + template + textAfter;
-            editor.selectionStart = cursorPos + 1;
-            editor.selectionEnd = cursorPos + 10; // Select "Link text"
-          }
+          toolbarEvent.addText(newValue);
+          textarea.selectionStart = textarea.selectionEnd = newCursorPos;
+        } else {
+          // Insert new link template
+          const template = "[Link text](/pages/page-id){.page-preview}";
+          toolbarEvent.addText(template);
           
-          editor.focus();
-        },
+          // Select "Link text"
+          later(() => {
+            textarea.selectionStart = cursorPos + 1;
+            textarea.selectionEnd = cursorPos + 10;
+            textarea.focus();
+          }, 10);
+        }
       },
-    });
-
-    api.onToolbarCreate((toolbar) => {
-      toolbar.addButton({
-        id: "page-preview-button",
-        group: "extras",
-        icon: "eye",
-        title: "page_previews.composer.button_title",
-        perform: (e) => e.togglePagePreview(),
-      });
     });
   }
 
@@ -308,6 +302,6 @@ function initializePagePreviews(api) {
 export default {
   name: "page-previews",
   initialize() {
-    withPluginApi("0.11.0", initializePagePreviews);
+    withPluginApi("1.8.0", initializePagePreviews);
   },
 };
