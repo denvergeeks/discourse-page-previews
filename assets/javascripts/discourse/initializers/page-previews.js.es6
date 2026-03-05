@@ -236,42 +236,35 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-// Composer integration - CORRECTED API
+// Composer integration - DISCOURSE 3.5+ MODERN API
 if (siteSettings.page_previews_show_in_composer) {
-  api.decorateWidget("composer-actions:after", helper => {
-    const currentUser = api.getCurrentUser();
-    if (!currentUser) return;
+  // Register composer action using modern API
+  api.registerComposerAction("insertPagePreview", {
+    icon: "eye",
+    displayNameKey: "page_previews.composer.button_title",
+    order: 10,
+  });
 
-    return helper.attach("button", {
-      icon: "eye",
-      title: "page_previews.composer.button_title",
-      action: () => {
-        const composerModel = api.container.lookup("controller:composer");
-        if (!composerModel || !composerModel.toolbarEventComponent) {
-          return;
-        }
+  // Handle the action
+  api.handleComposerAction("insertPagePreview", (composerModel) => {
+    const textarea = composerModel?.model?.target?.querySelector("textarea");
+    if (!textarea) return;
 
-        const toolbarEvent = composerModel.toolbarEventComponent;
-        const textarea = toolbarEvent.selected;
+    const cursorPos = textarea.selectionStart;
+    const textBefore = textarea.value.substring(0, cursorPos);
+    
+    const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
+    const template = linkMatch 
+      ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
+      : "[Page preview](/pages/page-id){.page-preview}";
 
-        if (!textarea) return;
-
-        const cursorPos = textarea.selectionStart;
-        const textBefore = textarea.value.substring(0, cursorPos);
-        
-        const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
-        const template = linkMatch 
-          ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
-          : "[Page preview](/pages/page-id){.page-preview}";
-
-        const start = textarea.selectionStart;
-        textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
-        textarea.selectionStart = textarea.selectionEnd = start + template.length;
-        textarea.focus();
-      }
-    });
+    const start = textarea.selectionStart;
+    textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
+    textarea.selectionStart = textarea.selectionEnd = start + template.length;
+    textarea.focus();
   });
 }
+
 
   api.onPageChange(() => {
     hidePreview();
