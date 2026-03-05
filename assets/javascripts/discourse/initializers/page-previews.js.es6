@@ -251,52 +251,51 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-// Composer integration - FIXED VERSION
+// Composer integration - Main toolbar button
 if (siteSettings.page_previews_show_in_composer) {
-  api.addComposerToolbarPopupMenuOption({
-    icon: "eye",
-    label: "page_previews.composer.button_title",
-    action: (toolbarEvent) => {
-      const textarea = toolbarEvent.selected;
-      
-      if (!textarea || typeof textarea.selectionStart !== "number") {
-        return;
-      }
-      
-      const cursorPos = textarea.selectionStart;
-      const textBefore = textarea.value.substring(0, cursorPos);
-      const textAfter = textarea.value.substring(cursorPos);
-      
-      // Check if we're inside a link
-      const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
-      
-      let template, newCursorPos;
-      
-      if (linkMatch) {
-        // Add preview attribute to existing link
-        const linkText = linkMatch[1];
-        const linkUrl = linkMatch[2];
-        const replacement = `[${linkText}](${linkUrl}){.page-preview}`;
-        const beforeLink = textBefore.substring(0, linkMatch.index);
+  api.onToolbarCreate((toolbar) => {
+    toolbar.addButton({
+      id: "insert-page-preview",
+      group: "insert",
+      icon: "eye",
+      title: "page_previews.composer.button_title",
+      perform: function (e) {
+        const textarea = e?.selected || e?.textarea;
         
-        template = beforeLink + replacement + textAfter;
-        newCursorPos = beforeLink.length + replacement.length;
-      } else {
-        // Insert new link template
-        template = "[Link text](/pages/page-id){.page-preview}";
-        newCursorPos = cursorPos + template.length;
-      }
-      
-      // Add text and set cursor position after DOM update
-      toolbarEvent.addText(template);
-      
-      later(() => {
-        if (textarea && textarea.focus) {
-          textarea.focus();
-          textarea.selectionStart = textarea.selectionEnd = newCursorPos;
+        if (!textarea) {
+          return;
         }
-      }, 50);
-    },
+        
+        const cursorPos = textarea.selectionStart;
+        const textBefore = textarea.value.substring(0, cursorPos);
+        const textAfter = textarea.value.substring(cursorPos);
+        
+        // Check if we're inside a link
+        const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
+        
+        let template;
+        
+        if (linkMatch) {
+          // Add preview class to existing link
+          const linkText = linkMatch[1];
+          const linkUrl = linkMatch[2];
+          template = `[${linkText}](${linkUrl}){.page-preview}`;
+        } else {
+          // Insert new template
+          template = "[Page preview](/pages/page-id){.page-preview}";
+        }
+        
+        // Insert text
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const textToAdd = template;
+        textarea.value = textarea.value.substring(0, start) + textToAdd + textarea.value.substring(end);
+        
+        // Position cursor
+        textarea.selectionStart = textarea.selectionEnd = start + textToAdd.length;
+        textarea.focus();
+      }
+    });
   });
 }
 
