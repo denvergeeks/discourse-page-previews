@@ -1,1 +1,17 @@
 en:
+  site_settings:
+    page_previews_enabled: "Enable page preview hover functionality"
+    page_previews_show_in_composer: "Show page preview button in composer toolbar"
+    page_previews_mobile_enabled: "Enable page previews on mobile devices"
+    page_previews_mobile_long_press_duration: "Duration in milliseconds for long-press activation on mobile"
+    page_previews_hover_delay: "Delay in milliseconds before showing preview on hover"
+    page_previews_preview_length: "Maximum character length for preview excerpts"
+    page_previews_require_ctrl_key: "Require Ctrl key to be held while hovering to show previews"
+    page_previews_show_images: "Show featured images in previews when available"
+    page_previews_show_metadata: "Show metadata (author, reading time, category, tags) in previews"
+    page_previews_max_image_height: "Maximum height in pixels for preview images"
+    page_previews_preview_width: "Width in pixels for preview popup"
+  page_previews:
+    errors:
+      no_access: "You don't have permission to view this content"
+      not_found: "Content not found"
