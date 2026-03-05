@@ -1,9 +1,9 @@
 en:
-  admin_js:
-    admin:
-      site_settings:
-        categories:
-          TODO_plugin_name: "Plugin Name"
   js:
-    discourse_plugin_name:
-      placeholder: placeholder
+    page_previews:
+      composer:
+        button_title: "Insert page preview link"
+      errors:
+        no_access: "You don't have permission to view this content"
+        not_found: "Content not found"
+        load_failed: "Failed to load preview"
