@@ -1,0 +1,313 @@
+import { withPluginApi } from "discourse/lib/plugin-api";
+import { ajax } from "discourse/lib/ajax";
+import { later, cancel } from "@ember/runloop";
+import { getOwner } from "discourse-common/lib/get-owner";
+
+let previewTimeout = null;
+let activePreview = null;
+let longPressTimer = null;
+let longPressTarget = null;
+
+function initializePagePreviews(api) {
+  const siteSettings = api.container.lookup("site-settings:main");
+  
+  if (!siteSettings.page_previews_enabled) {
+    return;
+  }
+
+  const isMobile = api.container.lookup("site:main").mobileView;
+  const requireCtrl = siteSettings.page_previews_require_ctrl_key;
+  const hoverDelay = siteSettings.page_previews_hover_delay;
+  const mobileEnabled = siteSettings.page_previews_mobile_enabled;
+  const longPressDuration = siteSettings.page_previews_mobile_long_press_duration;
+
+  function extractPageId(element) {
+    // Try multiple selectors for page/post links
+    const link = element.closest("a[href*='/pages/'], a[href*='/t/'], a.page-link, a.post-link");
+    if (!link) return null;
+
+    const href = link.getAttribute("href");
+    
+    // Extract page ID from /pages/:slug or /pages/:id
+    let match = href.match(/\/pages\/([^\/\?#]+)/);
+    if (match) {
+      // Check if it's numeric (ID) or slug
+      const idOrSlug = match[1];
+      if (/^\d+$/.test(idOrSlug)) {
+        return parseInt(idOrSlug, 10);
+      }
+      // If slug, try to get ID from data attribute
+      return link.dataset.pageId ? parseInt(link.dataset.pageId, 10) : null;
+    }
+
+    // Extract post ID from /t/slug/topic-id/post-number
+    match = href.match(/\/t\/[^\/]+\/(\d+)\/(\d+)/);
+    if (match) {
+      return parseInt(match[2], 10); // Return post number as ID
+    }
+
+    // Try data attributes
+    if (link.dataset.pageId) {
+      return parseInt(link.dataset.pageId, 10);
+    }
+    if (link.dataset.postId) {
+      return parseInt(link.dataset.postId, 10);
+    }
+
+    return null;
+  }
+
+  function createPreviewElement(data) {
+    const preview = document.createElement("div");
+    preview.className = "page-preview-popup";
+    preview.setAttribute("role", "tooltip");
+
+    let html = `
+      <div class="page-preview-header">
+        <h3 class="page-preview-title">${escapeHtml(data.title)}</h3>
+        ${data.type ? `<span class="page-preview-type">${escapeHtml(data.type)}</span>` : ""}
+      </div>
+    `;
+
+    if (data.image_url && siteSettings.page_previews_show_images) {
+      const maxHeight = siteSettings.page_previews_max_image_height;
+      html += `
+        <div class="page-preview-image">
+          <img src="${escapeHtml(data.image_url)}" 
+               alt="${escapeHtml(data.title)}"
+               style="max-height: ${maxHeight}px;" />
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="page-preview-content">
+        <p class="page-preview-excerpt">${data.excerpt}</p>
+      </div>
+    `;
+
+    if (siteSettings.page_previews_show_metadata) {
+      html += `
+        <div class="page-preview-meta">
+          <div class="page-preview-author">
+            <img src="${escapeHtml(data.author_avatar)}" 
+                 alt="${escapeHtml(data.author_name)}" 
+                 class="avatar" />
+            <span>${escapeHtml(data.author_name)}</span>
+          </div>
+      `;
+
+      if (data.read_time) {
+        html += `<span class="page-preview-read-time">${data.read_time} min read</span>`;
+      }
+
+      if (data.category_name) {
+        html += `
+          <span class="page-preview-category" 
+                style="background-color: #${data.category_color};">
+            ${escapeHtml(data.category_name)}
+          </span>
+        `;
+      }
+
+      if (data.tags && data.tags.length > 0) {
+        html += `
+          <div class="page-preview-tags">
+            ${data.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}
+          </div>
+        `;
+      }
+
+      html += `</div>`;
+    }
+
+    preview.innerHTML = html;
+    return preview;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function positionPreview(preview, targetElement) {
+    const rect = targetElement.getBoundingClientRect();
+    const previewWidth = siteSettings.page_previews_preview_width;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    preview.style.width = `${previewWidth}px`;
+
+    // Position below the element by default
+    let top = rect.bottom + window.scrollY + 10;
+    let left = rect.left + window.scrollX;
+
+    // Adjust horizontal position if preview would overflow viewport
+    if (left + previewWidth > viewportWidth) {
+      left = viewportWidth - previewWidth - 20;
+    }
+    if (left < 10) {
+      left = 10;
+    }
+
+    // Check if preview would overflow bottom of viewport
+    document.body.appendChild(preview);
+    const previewHeight = preview.offsetHeight;
+    
+    if (rect.bottom + previewHeight + 20 > viewportHeight) {
+      // Position above element instead
+      top = rect.top + window.scrollY - previewHeight - 10;
+    }
+
+    preview.style.top = `${top}px`;
+    preview.style.left = `${left}px`;
+  }
+
+  function showPreview(pageId, targetElement) {
+    hidePreview();
+
+    ajax(`/page-previews/${pageId}.json`)
+      .then((data) => {
+        activePreview = createPreviewElement(data);
+        positionPreview(activePreview, targetElement);
+        
+        // Fade in animation
+        requestAnimationFrame(() => {
+          activePreview.classList.add("visible");
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to load page preview:", error);
+      });
+  }
+
+  function hidePreview() {
+    if (activePreview) {
+      activePreview.remove();
+      activePreview = null;
+    }
+    if (previewTimeout) {
+      cancel(previewTimeout);
+      previewTimeout = null;
+    }
+  }
+
+  // Desktop hover with optional Ctrl key
+  if (!isMobile) {
+    document.addEventListener("mouseover", (e) => {
+      if (requireCtrl && !e.ctrlKey) {
+        return;
+      }
+
+      const pageId = extractPageId(e.target);
+      if (!pageId) {
+        hidePreview();
+        return;
+      }
+
+      previewTimeout = later(() => {
+        showPreview(pageId, e.target);
+      }, hoverDelay);
+    });
+
+    document.addEventListener("mouseout", (e) => {
+      const pageId = extractPageId(e.target);
+      if (pageId) {
+        hidePreview();
+      }
+    });
+
+    // Hide preview on scroll
+    document.addEventListener("scroll", hidePreview, { passive: true });
+  }
+
+  // Mobile long-press
+  if (isMobile && mobileEnabled) {
+    document.addEventListener("touchstart", (e) => {
+      const pageId = extractPageId(e.target);
+      if (!pageId) return;
+
+      longPressTarget = e.target;
+      longPressTimer = later(() => {
+        showPreview(pageId, e.target);
+        longPressTimer = null;
+      }, longPressDuration);
+    }, { passive: true });
+
+    document.addEventListener("touchend", () => {
+      if (longPressTimer) {
+        cancel(longPressTimer);
+        longPressTimer = null;
+      }
+    }, { passive: true });
+
+    document.addEventListener("touchmove", () => {
+      if (longPressTimer) {
+        cancel(longPressTimer);
+        longPressTimer = null;
+      }
+      hidePreview();
+    }, { passive: true });
+  }
+
+  // Composer integration
+  if (siteSettings.page_previews_show_in_composer) {
+    api.modifyClass("component:d-editor", {
+      pluginId: "discourse-page-previews",
+
+      actions: {
+        togglePagePreview() {
+          const editor = this.element.querySelector("textarea");
+          const cursorPos = editor.selectionStart;
+          const textBefore = editor.value.substring(0, cursorPos);
+          const textAfter = editor.value.substring(cursorPos);
+          
+          // Check if we're inside a link
+          const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)/);
+          
+          if (linkMatch) {
+            // Add preview attribute to existing link
+            const linkText = linkMatch[1];
+            const linkUrl = linkMatch[2];
+            const replacement = `[${linkText}](${linkUrl}){.page-preview}`;
+            
+            const beforeLink = textBefore.substring(0, linkMatch.index);
+            editor.value = beforeLink + replacement + textAfter;
+            editor.selectionStart = editor.selectionEnd = beforeLink.length + replacement.length;
+          } else {
+            // Insert new link template
+            const template = "[Link text](/pages/page-id){.page-preview}";
+            editor.value = textBefore + template + textAfter;
+            editor.selectionStart = cursorPos + 1;
+            editor.selectionEnd = cursorPos + 10; // Select "Link text"
+          }
+          
+          editor.focus();
+        },
+      },
+    });
+
+    api.onToolbarCreate((toolbar) => {
+      toolbar.addButton({
+        id: "page-preview-button",
+        group: "extras",
+        icon: "eye",
+        title: "page_previews.composer.button_title",
+        perform: (e) => e.togglePagePreview(),
+      });
+    });
+  }
+
+  // Cleanup on route change
+  api.onPageChange(() => {
+    hidePreview();
+  });
+}
+
+export default {
+  name: "page-previews",
+  initialize() {
+    withPluginApi("0.11.0", initializePagePreviews);
+  },
+};
