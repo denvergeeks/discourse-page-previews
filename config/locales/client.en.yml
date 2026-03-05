@@ -2,7 +2,7 @@ en:
   js:
     page_previews:
       composer:
-        button_title: "Insert Page Preview Link"
+        button_title: "Page Preview Link"
       errors:
         no_access: "You don't have permission to view this content"
         not_found: "Content not found"
