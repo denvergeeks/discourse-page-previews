@@ -251,8 +251,9 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-// Composer integration - Main toolbar button
+// Composer integration - Main toolbar AND popup menu
 if (siteSettings.page_previews_show_in_composer) {
+  // 1. Main toolbar button (most visible)
   api.onToolbarCreate((toolbar) => {
     toolbar.addButton({
       id: "insert-page-preview",
@@ -261,41 +262,31 @@ if (siteSettings.page_previews_show_in_composer) {
       title: "page_previews.composer.button_title",
       perform: function (e) {
         const textarea = e?.selected || e?.textarea;
-        
-        if (!textarea) {
-          return;
-        }
+        if (!textarea) return;
         
         const cursorPos = textarea.selectionStart;
         const textBefore = textarea.value.substring(0, cursorPos);
-        const textAfter = textarea.value.substring(cursorPos);
         
-        // Check if we're inside a link
         const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
+        const template = linkMatch 
+          ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
+          : "[Page preview](/pages/page-id){.page-preview}";
         
-        let template;
-        
-        if (linkMatch) {
-          // Add preview class to existing link
-          const linkText = linkMatch[1];
-          const linkUrl = linkMatch[2];
-          template = `[${linkText}](${linkUrl}){.page-preview}`;
-        } else {
-          // Insert new template
-          template = "[Page preview](/pages/page-id){.page-preview}";
-        }
-        
-        // Insert text
         const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const textToAdd = template;
-        textarea.value = textarea.value.substring(0, start) + textToAdd + textarea.value.substring(end);
-        
-        // Position cursor
-        textarea.selectionStart = textarea.selectionEnd = start + textToAdd.length;
+        textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
+        textarea.selectionStart = textarea.selectionEnd = start + template.length;
         textarea.focus();
       }
     });
+  });
+
+  // 2. Also in popup menu as backup
+  api.addComposerToolbarPopupMenuOption({
+    icon: "eye",
+    label: "page_previews.composer.button_title",
+    action: (toolbarEvent) => {
+      toolbarEvent.addText("[Page preview](/pages/page-id){.page-preview}");
+    },
   });
 }
 
