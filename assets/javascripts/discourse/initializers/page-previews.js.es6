@@ -8,6 +8,25 @@ let activePreview = null;
 let longPressTimer = null;
 let longPressTarget = null;
 
+// ✅ Shared insert function - MOVED OUTSIDE initializePagePreviews
+function insertPreviewLink(textarea) {
+  if (!textarea) return;
+
+  const cursorPos = textarea.selectionStart;
+  const textBefore = textarea.value.substring(0, cursorPos);
+  
+  // ✅ FIXED REGEX - no extra backslashes needed
+  const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
+  const template = linkMatch 
+    ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
+    : "[Page preview](/pages/page-id){.page-preview}";
+
+  const start = textarea.selectionStart;
+  textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
+  textarea.selectionStart = textarea.selectionEnd = start + template.length;
+  textarea.focus();
+}
+
 function initializePagePreviews(api) {
   const siteSettings = api.container.lookup("site-settings:main");
   
@@ -289,24 +308,7 @@ if (siteSettings.page_previews_show_in_composer) {
   });
 }
 
-// ✅ Shared insert function - MOVED OUTSIDE initializePagePreviews
-function insertPreviewLink(textarea) {
-  if (!textarea) return;
 
-  const cursorPos = textarea.selectionStart;
-  const textBefore = textarea.value.substring(0, cursorPos);
-  
-  // ✅ FIXED REGEX - no extra backslashes needed
-  const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
-  const template = linkMatch 
-    ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
-    : "[Page preview](/pages/page-id){.page-preview}";
-
-  const start = textarea.selectionStart;
-  textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
-  textarea.selectionStart = textarea.selectionEnd = start + template.length;
-  textarea.focus();
-}
 
 export default {
   name: "page-previews",
