@@ -1,6 +1,7 @@
 import { withPluginApi } from "discourse/lib/plugin-api";
 import { ajax } from "discourse/lib/ajax";
 import { later, cancel } from "@ember/runloop";
+import { getOwner } from "discourse-common/lib/get-owner";
 
 let previewTimeout = null;
 let activePreview = null;
@@ -14,38 +15,31 @@ function initializePagePreviews(api) {
     return;
   }
 
-  const isMobile = api.container.lookup("site:main").mobileView;
   const requireCtrl = siteSettings.page_previews_require_ctrl_key;
   const hoverDelay = siteSettings.page_previews_hover_delay;
   const mobileEnabled = siteSettings.page_previews_mobile_enabled;
   const longPressDuration = siteSettings.page_previews_mobile_long_press_duration;
 
   function extractPageId(element) {
-    // Try multiple selectors for page/post links
     const link = element.closest("a[href*='/pages/'], a[href*='/t/'], a.page-link, a.post-link");
     if (!link) return null;
 
     const href = link.getAttribute("href");
     
-    // Extract page ID from /pages/:slug or /pages/:id
     let match = href.match(/\/pages\/([^\/\?#]+)/);
     if (match) {
-      // Check if it's numeric (ID) or slug
       const idOrSlug = match[1];
       if (/^\d+$/.test(idOrSlug)) {
         return parseInt(idOrSlug, 10);
       }
-      // If slug, try to get ID from data attribute
       return link.dataset.pageId ? parseInt(link.dataset.pageId, 10) : null;
     }
 
-    // Extract post ID from /t/slug/topic-id/post-number
     match = href.match(/\/t\/[^\/]+\/(\d+)\/(\d+)/);
     if (match) {
-      return parseInt(match[2], 10); // Return post number as ID
+      return parseInt(match[2], 10);
     }
 
-    // Try data attributes
     if (link.dataset.pageId) {
       return parseInt(link.dataset.pageId, 10);
     }
@@ -139,11 +133,9 @@ function initializePagePreviews(api) {
 
     preview.style.width = `${previewWidth}px`;
 
-    // Position below the element by default
     let top = rect.bottom + window.scrollY + 10;
     let left = rect.left + window.scrollX;
 
-    // Adjust horizontal position if preview would overflow viewport
     if (left + previewWidth > viewportWidth) {
       left = viewportWidth - previewWidth - 20;
     }
@@ -151,12 +143,10 @@ function initializePagePreviews(api) {
       left = 10;
     }
 
-    // Check if preview would overflow bottom of viewport
     document.body.appendChild(preview);
     const previewHeight = preview.offsetHeight;
     
     if (rect.bottom + previewHeight + 20 > viewportHeight) {
-      // Position above element instead
       top = rect.top + window.scrollY - previewHeight - 10;
     }
 
@@ -171,8 +161,6 @@ function initializePagePreviews(api) {
       .then((data) => {
         activePreview = createPreviewElement(data);
         positionPreview(activePreview, targetElement);
-        
-        // Fade in animation
         requestAnimationFrame(() => {
           activePreview.classList.add("visible");
         });
@@ -193,37 +181,34 @@ function initializePagePreviews(api) {
     }
   }
 
-  // Desktop hover with optional Ctrl key
-  if (!isMobile) {
-    document.addEventListener("mouseover", (e) => {
-      if (requireCtrl && !e.ctrlKey) {
-        return;
-      }
+  // Desktop hover (runs on all devices, mobile handles separately)
+  document.addEventListener("mouseover", (e) => {
+    if (requireCtrl && !e.ctrlKey) {
+      return;
+    }
 
-      const pageId = extractPageId(e.target);
-      if (!pageId) {
-        hidePreview();
-        return;
-      }
+    const pageId = extractPageId(e.target);
+    if (!pageId) {
+      hidePreview();
+      return;
+    }
 
-      previewTimeout = later(() => {
-        showPreview(pageId, e.target);
-      }, hoverDelay);
-    });
+    previewTimeout = later(() => {
+      showPreview(pageId, e.target);
+    }, hoverDelay);
+  });
 
-    document.addEventListener("mouseout", (e) => {
-      const pageId = extractPageId(e.target);
-      if (pageId) {
-        hidePreview();
-      }
-    });
+  document.addEventListener("mouseout", (e) => {
+    const pageId = extractPageId(e.target);
+    if (pageId) {
+      hidePreview();
+    }
+  });
 
-    // Hide preview on scroll
-    document.addEventListener("scroll", hidePreview, { passive: true });
-  }
+  document.addEventListener("scroll", hidePreview, { passive: true });
 
-  // Mobile long-press
-  if (isMobile && mobileEnabled) {
+  // Mobile long-press (detect via touch events)
+  if (mobileEnabled) {
     document.addEventListener("touchstart", (e) => {
       const pageId = extractPageId(e.target);
       if (!pageId) return;
@@ -251,46 +236,35 @@ function initializePagePreviews(api) {
     }, { passive: true });
   }
 
-// Composer integration - Main toolbar AND popup menu
-if (siteSettings.page_previews_show_in_composer) {
-  // 1. Main toolbar button (most visible)
-  api.onToolbarCreate((toolbar) => {
-    toolbar.addButton({
-      id: "insert-page-preview",
-      group: "insert",
-      icon: "eye",
-      title: "page_previews.composer.button_title",
-      perform: function (e) {
-        const textarea = e?.selected || e?.textarea;
-        if (!textarea) return;
-        
-        const cursorPos = textarea.selectionStart;
-        const textBefore = textarea.value.substring(0, cursorPos);
-        
-        const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
-        const template = linkMatch 
-          ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
-          : "[Page preview](/pages/page-id){.page-preview}";
-        
-        const start = textarea.selectionStart;
-        textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
-        textarea.selectionStart = textarea.selectionEnd = start + template.length;
-        textarea.focus();
-      }
+  // Composer integration
+  if (siteSettings.page_previews_show_in_composer) {
+    api.onToolbarCreate((toolbar) => {
+      toolbar.addButton({
+        id: "insert-page-preview",
+        group: "insert",
+        icon: "eye",
+        title: "page_previews.composer.button_title",
+        perform: function (e) {
+          const textarea = e?.selected || e?.textarea;
+          if (!textarea) return;
+          
+          const cursorPos = textarea.selectionStart;
+          const textBefore = textarea.value.substring(0, cursorPos);
+          
+          const linkMatch = textBefore.match(/\[([^\]]*)\]\(([^)]*)\)/);
+          const template = linkMatch 
+            ? `[${linkMatch[1]}](${linkMatch[2]}){.page-preview}`
+            : "[Page preview](/pages/page-id){.page-preview}";
+          
+          const start = textarea.selectionStart;
+          textarea.value = textarea.value.substring(0, start) + template + textarea.value.substring(start);
+          textarea.selectionStart = textarea.selectionEnd = start + template.length;
+          textarea.focus();
+        }
+      });
     });
-  });
+  }
 
-  // 2. Also in popup menu as backup
-  api.addComposerToolbarPopupMenuOption({
-    icon: "eye",
-    label: "page_previews.composer.button_title",
-    action: (toolbarEvent) => {
-      toolbarEvent.addText("[Page preview](/pages/page-id){.page-preview}");
-    },
-  });
-}
-
-  // Cleanup on route change
   api.onPageChange(() => {
     hidePreview();
   });
